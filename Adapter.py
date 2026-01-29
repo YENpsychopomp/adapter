@@ -1,40 +1,38 @@
 import os
-from dotenv import load_dotenv
-import requests
 import tiktoken
-load_dotenv()
-
-DEFULT_AZURE_ENDPOINT = os.getenv("DEFULT_AZURE_ENDPOINT", None)
-DEFULT_AZURE_API_VERSION = os.getenv("DEFULT_AZURE_API_VERSION", None)
-DEFULT_AZURE_DEPLOYMENT_NAME = os.getenv("DEFULT_AZURE_DEPLOYMENT_NAME", None)
-
-deployment_mapping = {
-    "gpt-4": "gpt-4-deployment",
-    "gpt-3.5-turbo": "gpt-35-turbo-deployment",
-    "whisper": "whisper-deployment",
-    "gpt-4o": "gpt-4o-deployment"
-}
+from openai import AzureOpenAI
 
 class adapter:
-    def __init__(self, api_key=None, endpoint=None, model=None, api_version=None):
-        self.api_key = api_key
-        self.endpoint = endpoint if endpoint else DEFULT_AZURE_ENDPOINT
-        self.deployment_name = deployment_mapping.get(model, DEFULT_AZURE_DEPLOYMENT_NAME) if model else DEFULT_AZURE_DEPLOYMENT_NAME
-        self.api_version = api_version if api_version else DEFULT_AZURE_API_VERSION
+    def __init__(self, api_key=None, endpoint=None, api_version=None):
+        if not api_key and not endpoint and not api_version:
+            raise ValueError("At least one parameter must be provided")
+        self.api_key = api_key if api_key else os.getenv("API_KEY", None)
+        self.endpoint = endpoint
+        self.api_version = api_version
+        self.client = AzureOpenAI(
+            api_key=self.api_key,
+            azure_endpoint=self.endpoint,
+            api_version=self.api_version,
+        )
     
     def create(self, body):
         if not self.api_key:
             raise ValueError("API key is required")
         try:
-            azure = self.endpoint + "/openai/deployments/" + self.deployment_name + "/chat/completions?api-version=" + self.api_version
-            headers = {
-                "Content-Type": "application/json",
-                "api-key": self.api_key
-            }
-            response = requests.post(azure, headers=headers, json=body)
-            return response.json()
+            model = body.get("model", None)
+            if not model:
+                raise ValueError("Model name is required in the body")
+            response = self.client.chat.completions.create(**body)
+            return response
         except Exception as e:
-            raise ValueError("Invalid endpoint or deployment name") from e
+            raise ValueError(f"Invalid endpoint or deployment name\ndetails: {e}") from e
     
-    def compute_token(self, text):
-        return len(text.split())
+    def compute_token(self, input_text, output_text):
+        encoding = tiktoken.get_encoding("cl100k_base")
+        input_tokens = encoding.encode(input_text)
+        output_tokens = encoding.encode(output_text)
+        return {
+            "input_token_count": len(input_tokens),
+            "output_token_count": len(output_tokens),
+            "total_token_count": len(input_tokens) + len(output_tokens),
+        }

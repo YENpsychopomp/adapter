@@ -5,6 +5,11 @@ This is a adapter service for Azure OpenAI API, It receives requests from client
 >* AZURE_API_VERSION: The API version to use (e.g., 2024-08-01-preview)
 >* AZURE_DEPLOYMENT_NAME: The deployment name of your model in Azure
 
+## requirements
+```
+pip install -r requirements.txt
+```
+
 ## Example usage:
 ```python
 import Adapter
@@ -27,4 +32,5 @@ body = {
 }
 
 response = client.create(body)
-print(response) 
+print(response)
+```

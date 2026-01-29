@@ -1,0 +1,53 @@
+{
+  "id": "chatcmpl-D3G7j7ip47wk8ZbP4vVsbbeZKKv9y",
+  "object": "chat.completion",
+  "created": 1769669335,
+  "model": "gpt-4.1-nano-2025-04-14",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "世界先進與台積電簽署氮化鎵製程技術授權協議，將擴展高低壓GaN-on-Si製程能力，支持數據中心、車用電子等應用，並於2026年開始驗證，2028年量產，強化其在化合物半導體領域的布局。"
+      },
+      "logprobs": null,
+      "finish_reason": "stop",
+      "content_filter_results": {
+        "hate": { "filtered": false, "severity": "safe" },
+        "protected_material_code": { "filtered": false, "detected": false },
+        "protected_material_text": { "filtered": false, "detected": false },
+        "self_harm": { "filtered": false, "severity": "safe" },
+        "sexual": { "filtered": false, "severity": "safe" },
+        "violence": { "filtered": false, "severity": "safe" }
+      }
+    }
+  ],
+  "usage": {
+    "prompt_tokens": 705,
+    "completion_tokens": 84,
+    "total_tokens": 789,
+    "prompt_tokens_details": {
+      "audio_tokens": 0,
+      "cached_tokens": 0
+    },
+    "completion_tokens_details": {
+      "accepted_prediction_tokens": 0,
+      "audio_tokens": 0,
+      "reasoning_tokens": 0,
+      "rejected_prediction_tokens": 0
+    }
+  },
+  "system_fingerprint": "fp_03e44fcc34",
+  "prompt_filter_results": [
+    {
+      "prompt_index": 0,
+      "content_filter_results": {
+        "hate": { "filtered": false, "severity": "safe" },
+        "jailbreak": { "filtered": false, "detected": false },
+        "self_harm": { "filtered": false, "severity": "safe" },
+        "sexual": { "filtered": false, "severity": "safe" },
+        "violence": { "filtered": false, "severity": "safe" }
+      }
+    }
+  ]
+}
