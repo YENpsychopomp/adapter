@@ -1,6 +1,4 @@
-import os
 import Adapter
-import requests
 
 text = None
 with open("test.txt", "r") as file:

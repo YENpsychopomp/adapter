@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
 import requests
+import tiktoken
 load_dotenv()
 
 DEFULT_AZURE_ENDPOINT = os.getenv("DEFULT_AZURE_ENDPOINT", None)
@@ -34,3 +35,6 @@ class adapter:
             return response.json()
         except Exception as e:
             raise ValueError("Invalid endpoint or deployment name") from e
+    
+    def compute_token(self, text):
+        return len(text.split())
