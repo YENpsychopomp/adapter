@@ -23,6 +23,13 @@ class adapter:
             if not model:
                 raise ValueError("Model name is required in the body")
             response = self.client.chat.completions.create(**body)
+            if not body.get("stream"):
+                res_dict = response.model_dump()
+                res_dict.pop("prompt_filter_results", None)
+                for choice in res_dict.get("choices", []):
+                    choice.pop("content_filter_results", None)
+                return res_dict
+    
             return response
         except Exception as e:
             raise ValueError(f"Invalid endpoint or deployment name\ndetails: {e}") from e

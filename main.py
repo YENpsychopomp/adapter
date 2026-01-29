@@ -2,6 +2,7 @@ import Adapter
 import os
 import dotenv
 import time
+import json
 
 start_time = time.time()
 dotenv.load_dotenv()
@@ -20,29 +21,40 @@ body = {
         {"role": "system", "content": "You are a helpful assistant"},
         {"role": "user", "content": "Please using chinese teach me the article:\n" + text}
     ],
-    "stream": True,
+    "stream": False,
     "temperature": 1.0,
 }
 if body.get("stream"):
     stream = client.create(body)
-    strs = []
+    strs = ""
     for chunk in stream:
         if not chunk.choices:
             continue
         delta = chunk.choices[0].delta
         if hasattr(delta, 'content') and delta.content:
             print(delta.content, end="", flush=True)
-            strs.append(delta.content)
-
+            strs += delta.content
         if chunk.choices[0].finish_reason == "stop":
             print("\n--- 總結完成 ---")
-            tokens = client.compute_token(input_text=text, output_text="".join(strs))
+            tokens = client.compute_token(input_text=text, output_text=strs)
             print(f"輸入文字token數量: {tokens['input_token_count']}\n模型輸出token數量: {tokens['output_token_count']}\n總token數量: {tokens['total_token_count']}")
             break
+        elif chunk.choices[0].finish_reason == "length":
+            print(f"\n生成中止，原因: 達到長度上限，回覆被截斷")
+            break
+        elif chunk.choices[0].finish_reason == "content_filter":
+            print(f"\n生成中止，原因: 內容過濾器，回覆被截斷")
 else:
     response = client.create(body)
-    print(response.choices[0].message.content)
-    print("\n--- 總結完成 ---")
-    print(f"輸入文字token數量: {response.usage.prompt_tokens}\n模型輸出token數量: {response.usage.completion_tokens}\n總token數量: {response.usage.total_tokens}")
+    with open("response.json", "w", encoding="utf-8") as f:
+        json.dump(response, f, ensure_ascii=False, indent=4)
+    print(response["choices"][0]["message"]["content"])
+    if response["choices"][0]["finish_reason"] == "stop":
+        print("\n--- 總結完成 ---")
+    elif response["choices"][0]["finish_reason"] == "length":
+        print(f"\n生成中止，原因: 達到長度上限，回覆被截斷")
+    elif response["choices"][0]["finish_reason"] == "content_filter":
+        print(f"\n生成中止，原因: 內容過濾器，回覆被截斷")
+    print(f"輸入文字token數量: {response['usage']['prompt_tokens']}\n模型輸出token數量: {response['usage']['completion_tokens']}\n總token數量: {response['usage']['total_tokens']}")
 end_time = time.time()
 print(f"執行時間: {end_time - start_time} 秒")
