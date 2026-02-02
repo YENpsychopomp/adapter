@@ -1,6 +1,7 @@
 import os
 import tiktoken
 from openai import AzureOpenAI
+from embedding import query
 
 class adapter:
     def __init__(self, api_key=None, endpoint=None, api_version=None):
@@ -43,3 +44,17 @@ class adapter:
             "output_token_count": len(output_tokens),
             "total_token_count": len(input_tokens) + len(output_tokens),
         }
+
+    def RAG_query(self, body):
+        """
+        RAG use case
+        """
+        user_query = body.get("query", "").strip()
+        top_k = body.get("top_k", 5)
+        if not user_query:
+            raise ValueError("Query text is required in the body")
+        try:
+            result = query(self.client, body.get("chroma_collection", "stock_news"), user_query, top_k=top_k)
+            return result
+        except Exception as e:
+            raise ValueError(f"Error during RAG query\ndetails: {e}") from e
