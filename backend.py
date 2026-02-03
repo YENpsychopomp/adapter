@@ -41,18 +41,5 @@ async def list_models():
         ]
     }
 
-def process_auto_save(ai_reply: str):
-    """提取 JSON 並存入 ChromaDB"""
-    try:
-        raw_json = ai_reply.split("[SAVE_START]")[1].split("[SAVE_END]")[0].strip()
-        data = json.loads(raw_json)
-        print(f"✨ [自動入庫] 標題: {data.get('title')}")
-        
-        # 這裡可以根據你之前 embedding.py 的邏輯存入
-        # 為了簡化，你可以直接用 db_manager.collection.add (...)
-        # 或調用你原本寫好的批次處理函數
-    except Exception as e:
-        print(f"⚠️ 入庫失敗: {e}")
-
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=9898)
