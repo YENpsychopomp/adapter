@@ -1,4 +1,3 @@
-import os
 import json
 import time
 from typing import List, Dict, Any
@@ -8,7 +7,7 @@ from pathlib import Path
 import uvicorn
 
 # 匯入你原本的工具
-from embedding import ChromaDBManager, build_azure_client_from_env, prepare_texts_with_splitter, run_embedding_pipeline
+from embedding import ChromaDBManager, build_azure_client_from_env, query
 
 app = FastAPI()
 
@@ -24,71 +23,12 @@ class ChatRequest(BaseModel):
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: ChatRequest):
-    user_input = request.messages[-1]["content"]
-    
-    # 1. RAG 判斷與檢索
-    need_rag = "?" in user_input or "？" in user_input or len(user_input) < 100
-    context = ""
-    if need_rag:
-        print(f"[RAG] 檢索中: {user_input[:20]}...")
-        emb_res = azure_client.embeddings.create(input=[user_input], model="text-embedding-ada-002")
-        q_emb = emb_res.data[0].embedding
-        search_res = db_manager.query_by_embedding(query_embedding=q_emb, top_k=3)
-        if search_res['documents'] and search_res['documents'][0]:
-            print(f"[RAG] 找到相關文件，一共 {len(search_res['documents'][0])} 筆。")
-            context = "\n".join(search_res['documents'][0])
-    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
-    # 2. 重新建構發送給 Azure 的 Messages
-    system_instruction = f"""你是一個專業財經助手。
-    1. 參考背景資料回答問題。
-    2. 若輸入具備財經價值，請在結尾標註 [SAVE_START] 與 [SAVE_END] 夾帶 JSON 格式。
-    3. 回應始終保持中文，除非使用者特別要求其他語言。
-    4. 現在的時間是 {current_time}。
-    JSON 格式：{"title": "...", "content": "...", "date_publish": "YYYY-MM-DD", "url": "..."}
-    """
-    
-    azure_messages = [{"role": "system", "content": system_instruction}]
-    for msg in request.messages[:-1]:
-        azure_messages.append(msg)
-        
-    # 加入當前輸入與 Context
-    azure_messages.append({
-        "role": "user", 
-        "content": f"【背景資料】：\n{context}\n\n【使用者輸入】：{user_input}"
-    })
-
-    # 3. 呼叫 Azure LLM
-    response = azure_client.chat.completions.create(
-        model="gpt-4o", # 這裡填你的部署名稱
-        messages=azure_messages,
-        temperature=request.temperature
-    )
-    
-    ai_reply = response.choices[0].message.content
-
-    # 4. 自動入庫判斷 (背景執行)
-    if "[SAVE_START]" in ai_reply:
-        process_auto_save(ai_reply)
-        # 移除 JSON 標記後再回傳給前端
-        ai_reply = ai_reply.split("[SAVE_START]")[0].strip()
-
-    # 5. 回傳符合 OpenAI 格式的 Response
-    return {
-        "id": "chatcmpl-" + str(time.time()),
-        "object": "chat.completion",
-        "created": int(time.time()),
-        "model": request.model,
-        "choices": [{
-            "index": 0,
-            "message": {"role": "assistant", "content": ai_reply},
-            "finish_reason": "stop"
-        }],
-        "usage": response.usage.model_dump()
-    }
+    print(request)
+    response = query(azure_client, db_manager, request)
+    return response
 
 @app.get("/v1/models")
 async def list_models():
-    # 回傳一個簡單的模型列表
     return {
         "object": "list",
         "data": [

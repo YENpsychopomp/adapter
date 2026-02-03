@@ -13,6 +13,8 @@ import dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from openai import AzureOpenAI
 import tiktoken
+import time
+from pydantic import BaseModel
 
 dotenv.load_dotenv()
 
@@ -21,7 +23,11 @@ COLLECTION_NAME = "articles"
 DEFAULT_MODEL = "text-embedding-ada-002"
 AZURE_BATCH_LIMIT = 16
 
-
+class ChatRequest(BaseModel):
+    model: str
+    messages: List[Dict[str, str]]
+    temperature: float = 0.7
+    stream: bool = False
 # ---------------------------------------------------------------------------
 # Chroma helpers
 # ---------------------------------------------------------------------------
@@ -213,6 +219,18 @@ def prepare_texts_with_splitter(
 
     return final_documents
 
+def process_auto_save(ai_reply: str):
+    """提取 JSON 並存入 ChromaDB"""
+    try:
+        raw_json = ai_reply.split("[SAVE_START]")[1].split("[SAVE_END]")[0].strip()
+        data = json.loads(raw_json)
+        print(f"✨ [自動入庫] 標題: {data.get('title')}")
+        
+        # 這裡可以根據你之前 embedding.py 的邏輯存入
+        # 為了簡化，你可以直接用 db_manager.collection.add (...)
+        # 或調用你原本寫好的批次處理函數
+    except Exception as e:
+        print(f"⚠️ 入庫失敗: {e}")
 
 def build_azure_client_from_env() -> AzureOpenAI:
     api_key = dotenv.get_key(dotenv.find_dotenv(), "API_KEY")
@@ -220,11 +238,67 @@ def build_azure_client_from_env() -> AzureOpenAI:
     api_version = dotenv.get_key(dotenv.find_dotenv(), "AZURE_API_VERSION")
     return AzureOpenAI(api_key=api_key, azure_endpoint=endpoint, api_version=api_version)
 
-def query(Azure_client: AzureOpenAI, ChromaDB: ChromaDBManager, query_text: str, top_k: int = 5) -> Dict[str, Any]:
+def query(Azure_client: AzureOpenAI, ChromaDB: ChromaDBManager,request: ChatRequest, k: int = 5) -> Dict[str, Any]:
     """Helper to get embedding for a query text."""
-    response = Azure_client.embeddings.create(input=[query_text], model=DEFAULT_MODEL)
-    query_embedding = response.data[0].embedding
-    return ChromaDB.query_by_embedding(query_embedding=query_embedding, top_k=top_k)
+    user_input = request.messages[-1]["content"]
+    need_rag = "?" in user_input or "？" in user_input or len(user_input) < 100
+    context = ""
+    if need_rag:
+        print(f"[RAG] 檢索中: {user_input[:20]}...")
+        emb_res = Azure_client.embeddings.create(input=[user_input], model="text-embedding-ada-002")
+        q_emb = emb_res.data[0].embedding
+        search_res = ChromaDB.query_by_embedding(query_embedding=q_emb, top_k=k)
+        if search_res['documents'] and search_res['documents'][0]:
+            print(f"[RAG] 找到相關文件，一共 {len(search_res['documents'][0])} 筆。")
+            context = "\n".join(search_res['documents'][0])
+    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+    # 2. 重新建構發送給 Azure 的 Messages
+    system_instruction = f"""你是一個專業財經助手。
+    1. 參考背景資料回答問題。
+    2. 若輸入具備財經價值，請在結尾標註 [SAVE_START] 與 [SAVE_END] 夾帶 JSON 格式。
+    3. 回應始終保持中文，除非使用者特別要求其他語言。
+    4. 現在的時間是 {current_time}。
+    JSON 格式：{"title": "...", "content": "...", "date_publish": "YYYY-MM-DD", "url": "..."}
+    """
+    
+    azure_messages = [{"role": "system", "content": system_instruction}]
+    for msg in request.messages[:-1]:
+        azure_messages.append(msg)
+        
+    # 加入當前輸入與 Context
+    azure_messages.append({
+        "role": "user",
+        "content": f"【背景資料】：\n{context}\n\n【使用者輸入】：{user_input}"
+    })
+
+    # 3. 呼叫 Azure LLM
+    response = Azure_client.chat.completions.create(
+        model="gpt-4.1-nano", # 這裡填你的部署名稱
+        messages=azure_messages,
+        temperature=request.temperature
+    )
+    
+    ai_reply = response.choices[0].message.content
+
+    # 4. 自動入庫判斷 (背景執行)
+    if "[SAVE_START]" in ai_reply:
+        process_auto_save(ai_reply)
+        # 移除 JSON 標記後再回傳給前端
+        ai_reply = ai_reply.split("[SAVE_START]")[0].strip()
+
+    # 5. 回傳符合 OpenAI 格式的 Response
+    return {
+        "id": "chatcmpl-" + str(time.time()),
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": request.model,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": ai_reply},
+            "finish_reason": "stop"
+        }],
+        "usage": response.usage.model_dump()
+    }
 
 
 if __name__ == "__main__":
