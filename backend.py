@@ -37,12 +37,13 @@ async def chat_completions(request: ChatRequest):
         if search_res['documents'] and search_res['documents'][0]:
             print(f"[RAG] 找到相關文件，一共 {len(search_res['documents'][0])} 筆。")
             context = "\n".join(search_res['documents'][0])
-
+    current_time = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
     # 2. 重新建構發送給 Azure 的 Messages
-    system_instruction = """你是一個專業財經助手。
+    system_instruction = f"""你是一個專業財經助手。
     1. 參考背景資料回答問題。
     2. 若輸入具備財經價值，請在結尾標註 [SAVE_START] 與 [SAVE_END] 夾帶 JSON 格式。
     3. 回應始終保持中文，除非使用者特別要求其他語言。
+    4. 現在的時間是 {current_time}。
     JSON 格式：{"title": "...", "content": "...", "date_publish": "YYYY-MM-DD", "url": "..."}
     """
     
