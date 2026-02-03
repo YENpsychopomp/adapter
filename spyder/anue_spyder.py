@@ -8,8 +8,8 @@ import warnings
 from typing import List, Dict, Optional
 from datetime import datetime, timezone, timedelta
 
-def fetch_anue_stock_news(Page: int = 1) -> List[Dict]:
-    url = f"https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?page={Page}&limit=30&isCategoryHeadline=0"
+def fetch_anue_stock_news(Page: int = 1, limit: int = 30) -> List[Dict]:
+    url = f"https://api.cnyes.com/media/api/v1/newslist/category/tw_stock?page={Page}&limit={limit}&isCategoryHeadline=0"
     response = requests.get(url)
     return response.json()
 
@@ -39,11 +39,16 @@ if __name__ == "__main__":
     every news url like: https://news.cnyes.com/news/id/{news_id}, news_id in the response data
     time format is Unix timestamp
     """
-    totalPage = 5
     articles = load_articles("spyder/article.json")
-
-    for i in range(1, totalPage + 1):
-        result = fetch_anue_stock_news(Page=i)
+    count = 0
+    isBreak = False
+    limit = 30
+    while not isBreak:
+        count += 1
+        result = fetch_anue_stock_news(Page=count, limit=limit)
+        print(f"fetched page {count}, got {len(result['items']['data'])} items")
+        if not result["items"]["data"] or len(result["items"]["data"]) < limit:
+            isBreak = True
         for j in result["items"]["data"]:
             newsurl = f"https://news.cnyes.com/news/id/{j['newsId']}"
             if url_exists(articles, newsurl):

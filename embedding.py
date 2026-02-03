@@ -3,7 +3,7 @@ import html
 import json
 import re
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Sequence
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Set
 
 import chromadb
 from bs4 import BeautifulSoup
@@ -19,8 +19,7 @@ dotenv.load_dotenv()
 PERSIST_DIR = Path("chroma_db")
 COLLECTION_NAME = "articles"
 DEFAULT_MODEL = "text-embedding-ada-002"
-AZURE_BATCH_LIMIT = 16  # Azure often limits to 16 inputs per request
-TOKEN_LIMIT = 8000      # Keep below 8191 for ada-002
+AZURE_BATCH_LIMIT = 16
 
 
 # ---------------------------------------------------------------------------
@@ -69,6 +68,13 @@ class ChromaDBManager:
     def count(self) -> int:
         """Return number of items currently stored."""
         return self.collection.count()
+
+    def existing_ids(self, ids: List[str]) -> Set[str]:
+        """Return ids that already exist in the collection."""
+        if not ids:
+            return set()
+        result = self.collection.get(ids=ids, include=[])
+        return set(result.get("ids", []))
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +161,7 @@ def run_embedding_pipeline(
             response = azure_client.embeddings.create(input=batch, model=model_name)
             embeddings.extend([data.embedding for data in response.data])
 
-        print(f"✅ 成功生成 {len(embeddings)} 筆向量資料")
+        print(f"成功生成 {len(embeddings)} 筆向量資料")
 
         return [
             {"id": ids[idx], "text": text, "metadata": metadata_list[idx], "vector": embeddings[idx]}
@@ -164,37 +170,6 @@ def run_embedding_pipeline(
     except Exception as exc:  # surface API errors for debugging
         print(f"API 呼叫失敗: {exc}")
         return None
-
-
-def prepare_texts_for_embedding(json_file: str) -> List[Dict[str, Any]]:
-    with open(json_file, "r", encoding="utf-8") as fp:
-        articles = json.load(fp)
-
-    encoder = tiktoken.encoding_for_model(DEFAULT_MODEL)
-    final_documents: List[Dict[str, Any]] = []
-
-    for art in articles:
-        clean_body = clean_html_to_markdown(art.get("content", ""))
-        keywords = art.get("keywords") or art.get("keyword") or []
-        stocks = art.get("stock") or []
-        tags = ",".join(keywords + [str(stock) for stock in stocks])
-
-        input_text = f"標題: {art['title']}\n標籤: {tags}\n內容: {clean_body}"
-
-        tokens = encoder.encode(input_text)
-        if len(tokens) > TOKEN_LIMIT:
-            input_text = encoder.decode(tokens[:TOKEN_LIMIT])
-
-        final_documents.append(
-            {
-                "id": art["url"],
-                "text": input_text,
-                "metadata": {"title": art["title"], "date": art["date_publish"], "url": art["url"]},
-            }
-        )
-
-    return final_documents
-
 
 def prepare_texts_with_splitter(
     json_file: str,
@@ -259,14 +234,26 @@ if __name__ == "__main__":
     if action == 1:
         json_path = "spyder/article.json"
         documents = prepare_texts_with_splitter(json_path)
-        results = run_embedding_pipeline(documents, client, BudgetManager())
-        if results:
-            ids = [item["id"] for item in results]
-            vectors = [item["vector"] for item in results]
-            texts = [item["text"] for item in results]
-            metas = [item["metadata"] for item in results]
-            print(f"正在批次寫入 {len(ids)} 筆資料...")
-            stockNewsChromaDB.upsert_embeddings(ids=ids, embeddings=vectors, documents=texts, metadatas=metas)
+        doc_ids = [doc["id"] for doc in documents]
+        existing = stockNewsChromaDB.existing_ids(doc_ids)
+        new_documents = [doc for doc in documents if doc["id"] not in existing]
+
+        if existing:
+            print(f"跳過 {len(existing)} 筆已存在的資料，未送往 embedding。")
+
+        if not new_documents:
+            print("沒有新資料需要寫入")
+        else:
+            results = run_embedding_pipeline(new_documents, client, BudgetManager())
+            if results:
+                ids = [item["id"] for item in results]
+                vectors = [item["vector"] for item in results]
+                texts = [item["text"] for item in results]
+                metas = [item["metadata"] for item in results]
+                print(f"正在批次寫入 {len(ids)} 筆新資料...")
+                stockNewsChromaDB.upsert_embeddings(ids=ids, embeddings=vectors, documents=texts, metadatas=metas)
+            else:
+                print("Embedding 失敗或未產生結果。")
         print(f"資料庫目前有 {stockNewsChromaDB.count()} 筆資料。")
     elif action == 2:
         user_query = input("請輸入查詢內容: ").strip()

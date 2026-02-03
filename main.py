@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from embedding import ChromaDBManager, build_azure_client_from_env
 
-# --- 1. 初始化環境 ---
 dotenv.load_dotenv()
 azure_client = build_azure_client_from_env()
 db_manager = ChromaDBManager(collection_name="stock_news", persist_dir=Path("db/chroma_db"))
@@ -21,9 +20,7 @@ chat_history = []
 
 def get_ai_response(user_input):
     global chat_history
-    
-    # --- 步驟 A：判斷是否需要 RAG (由程式邏輯或輕量判斷) ---
-    # 如果輸入包含問號，或長度適中，則去資料庫找背景資料
+
     need_rag = "?" in user_input or "？" in user_input or len(user_input) < 100
     context = ""
     if need_rag:
